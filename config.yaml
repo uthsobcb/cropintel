@@ -1,0 +1,33 @@
+season: "2025_Aman"
+
+paths:
+  images_dir: "data/images"               
+  disease_labels: "models/DiseaseAlert/labels.json"
+  # YieldCast
+  yield_features_csv: "model_outputs/features_with_lag.csv"  
+  yield_model_joblib: "model_outputs/lgb_WITHLAG_ALL.joblib" 
+  # ResourceOpt
+  drivers_parquet: "data/features/drivers.parquet" 
+
+models:
+  diseasealert_pt: "models/DiseaseAlert/riceDisease.pt"
+
+resourceopt:
+  total_supply_kg: 200000
+  bag_size_kg: 50
+  lambda_cost: 0.2
+  composite: "weighted"
+  weights:
+    w_risk: 0.5
+    w_rain: 0.3
+    w_prior: 0.2
+    v_fert: 0.5
+    v_resp: 0.5
+    a: 0.6
+    b: 0.4
+  region_caps: {}   
+
+preprocess:
+  img_size: 224
+  mean: [0.485, 0.456, 0.406]
+  std:  [0.229, 0.224, 0.225]
