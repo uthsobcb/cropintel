@@ -1,0 +1,4 @@
+season,Yield_t_ha_lag1,Yield_t_ha_lag2,Yield_t_ha_lag3,Yield_t_ha_ma3,NDVI_mean_season,NDVI_mean_lag1,NDVI_mean_lag2,NDVI_mean_trend2,NDVI_anom,NDVI_max_season,NDVI_integral,Rain,Tmax,Tmin,Sunshine,RH,Wind,Cloud,TempRange,Pct_irrigated
+Aman,2.9,2.8,2.7,2.8,0.58,0.55,0.53,0.05,-0.02,0.72,48.0,1250,32.0,24.0,420,82,1.4,6,8.0,0.35
+Aus,2.3,2.1,2.0,2.1,0.50,0.48,0.47,0.03,0.01,0.65,35.0,650,34.0,23.5,500,75,1.8,5,10.5,0.45
+Boro,4.4,4.3,4.2,4.3,0.72,0.70,0.68,0.04,0.02,0.82,60.0,280,31.0,18.5,720,68,1.2,3,12.5,0.95

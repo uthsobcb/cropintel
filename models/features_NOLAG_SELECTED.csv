@@ -1,0 +1,17 @@
+feature
+lag1_ndvi_interaction
+NDVI_mean_trend2
+Tmax
+Rain
+Wind
+Tmin
+NDVI_mean_season
+NDVI_anom
+Sunshine
+RH
+Area_rf
+Area_ir
+NDVI_integral
+Area_total
+Planting_Month_w
+NDVI_peak_month

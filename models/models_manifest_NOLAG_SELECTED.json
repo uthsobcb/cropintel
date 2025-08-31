@@ -1,0 +1,30 @@
+[
+  {
+    "tag": "NOLAG",
+    "model": "RandomForest",
+    "features": "SELECTED",
+    "season": "ALL",
+    "path": "/content/model_outputs/best_NOLAG_RandomForest_SELECTED_ALL.joblib"
+  },
+  {
+    "tag": "NOLAG",
+    "model": "RandomForest",
+    "features": "SELECTED",
+    "season": "Aman",
+    "path": "/content/model_outputs/best_NOLAG_RandomForest_SELECTED_Aman.joblib"
+  },
+  {
+    "tag": "NOLAG",
+    "model": "RandomForest",
+    "features": "SELECTED",
+    "season": "Aus",
+    "path": "/content/model_outputs/best_NOLAG_RandomForest_SELECTED_Aus.joblib"
+  },
+  {
+    "tag": "NOLAG",
+    "model": "RandomForest",
+    "features": "SELECTED",
+    "season": "Boro",
+    "path": "/content/model_outputs/best_NOLAG_RandomForest_SELECTED_Boro.joblib"
+  }
+]
