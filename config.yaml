@@ -1,16 +1,20 @@
 season: "2025_Aman"
 
 paths:
-  images_dir: "data/images"               
-  disease_labels: "models/DiseaseAlert/labels.json"
-  # YieldCast
-  yield_features_csv: "model_outputs/features_with_lag.csv"  
-  yield_model_joblib: "model_outputs/lgb_WITHLAG_ALL.joblib" 
-  # ResourceOpt
-  drivers_parquet: "data/features/drivers.parquet" 
+  images_dir: "data/images"
+  disease_labels: "rice-disease/artifacts/classes.json"
+  yield_features_csv: "YieldCast/Model_outputs_03/features_WITHLAG_SELECTED.csv"
+  yield_model_joblib: "YieldCast/Model_outputs_03/best_WITHLAG_RandomForest_SELECTED_ALL.joblib"
+  drivers_parquet: "data/features/drivers.parquet"
 
-models:
-  diseasealert_pt: "models/DiseaseAlert/riceDisease.pt"
+"rice-disease":
+  "best_model.pt": "rice-disease/artifacts/best_model.pt"
+
+
+preprocess:
+  img_size: 224
+  mean: [0.485, 0.456, 0.406]
+  std:  [0.229, 0.224, 0.225]
 
 resourceopt:
   total_supply_kg: 200000
@@ -27,7 +31,3 @@ resourceopt:
     b: 0.4
   region_caps: {}   
 
-preprocess:
-  img_size: 224
-  mean: [0.485, 0.456, 0.406]
-  std:  [0.229, 0.224, 0.225]

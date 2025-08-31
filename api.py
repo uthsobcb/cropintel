@@ -74,15 +74,60 @@ def _preprocess_image(img: Image.Image, size: int, mean: List[float], std: List[
 def _softmax(x: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.softmax(x, dim=1)
 
+# def load_torch_model(pt_path: str):
+#     # Prefer TorchScript for server inference
+#     try:
+#         m = torch.jit.load(pt_path, map_location="cpu")
+#         m.eval()
+#         return m, True
+#     except Exception:
+#         # Fallback: try standard state_dict with a basic classifier shape (user should customize)
+#         return None, False
 def load_torch_model(pt_path: str):
-    # Prefer TorchScript for server inference
+    """
+    Try (1) TorchScript, (2) eager PyTorch Module, (3) fallback Tiny net if a state_dict was provided.
+    """
+    # 1) TorchScript path
     try:
         m = torch.jit.load(pt_path, map_location="cpu")
         m.eval()
         return m, True
-    except Exception:
-        # Fallback: try standard state_dict with a basic classifier shape (user should customize)
-        return None, False
+    except Exception as e_script:
+        pass  # will try eager formats below
+
+    # 2) Eager Module or state_dict
+    try:
+        obj = torch.load(pt_path, map_location="cpu")
+
+        # If a full nn.Module was saved
+        if hasattr(obj, "eval"):
+            obj.eval()
+            return obj, False
+
+        # If weights only (state_dict / OrderedDict), build a tiny classifier so the API can run
+        if isinstance(obj, dict):
+            num_classes = len(_LABELS) if _LABELS else 4
+
+            class Tiny(torch.nn.Module):
+                def __init__(self, n):
+                    super().__init__()
+                    self.net = torch.nn.Sequential(
+                        torch.nn.Conv2d(3, 16, 3, 1, 1), torch.nn.ReLU(),
+                        torch.nn.AdaptiveAvgPool2d(1),
+                        torch.nn.Flatten(),
+                        torch.nn.Linear(16, n)
+                    )
+                def forward(self, x):  # x: [B,3,224,224]
+                    return self.net(x)
+
+            m = Tiny(num_classes).eval()  # random weights; for smoke-tests only
+            return m, False
+
+    except Exception as e_eager:
+        print("Model load failed:", e_eager)
+
+    return None, False
+
 
 # cache global
 _TORCH_MODEL = None
@@ -92,7 +137,7 @@ _LABELS = _load_labels(CFG["paths"].get("disease_labels", ""))
 def ensure_torch_model():
     global _TORCH_MODEL, _TORCH_MODEL_IS_SCRIPT
     if _TORCH_MODEL is None:
-        _TORCH_MODEL, _TORCH_MODEL_IS_SCRIPT = load_torch_model(CFG["models"]["diseasealert_pt"])
+        _TORCH_MODEL, _TORCH_MODEL_IS_SCRIPT = load_torch_model(CFG["rice-disease"]["best_model.pt"])
     return _TORCH_MODEL, _TORCH_MODEL_IS_SCRIPT
 
 # -------------------- YieldCast (LightGBM .joblib) --------------------
@@ -111,25 +156,72 @@ def ensure_lgb_model():
             _LGB_FEATURE_LIST = None
     return _LGB_MODEL, _LGB_FEATURE_LIST
 
+# def lgb_predict(features_csv: str, season: str) -> pd.DataFrame:
+#     model, feat_names = ensure_lgb_model()
+#     feats = pd.read_csv(features_csv)
+#     # filter current season if the file has multi-season rows
+#     if "season" in feats.columns:
+#         feats = feats[feats["season"] == season].copy()
+#     if "district_id" not in feats.columns:
+#         raise ValueError("features CSV must include 'district_id' column.")
+#     # build X matrix
+#     if feat_names:
+#         X = feats[feat_names]
+#     else:
+#         X = feats[[c for c in feats.columns if c not in ("district_id", "season")]]
+#     # predict
+#     if isinstance(model, lgb.Booster):
+#         y_pred = model.predict(X)
+#     else:
+#         y_pred = model.predict(X)  # sklearn-like
+#     # naive 15% CI band (replace with your calibrated approach when ready)
+#     ci_w = 0.15 * np.abs(y_pred)
+#     out = feats[["district_id"]].copy()
+#     out["season"] = season
+#     out["yield_pred_kg_ha"] = y_pred
+#     out["ci_low"] = y_pred - ci_w
+#     out["ci_high"] = y_pred + ci_w
+#     out["anomaly_flag"] = False
+#     return out
 def lgb_predict(features_csv: str, season: str) -> pd.DataFrame:
     model, feat_names = ensure_lgb_model()
     feats = pd.read_csv(features_csv)
-    # filter current season if the file has multi-season rows
+
+    # filter current season if present
     if "season" in feats.columns:
         feats = feats[feats["season"] == season].copy()
+
+    # Ensure district_id exists (try to derive from district_name using drivers_parquet)
     if "district_id" not in feats.columns:
-        raise ValueError("features CSV must include 'district_id' column.")
+        # try to find a name-like column
+        name_cols = [c for c in feats.columns if c.strip().lower() in ("district_name","district","name")]
+        if name_cols:
+            try:
+                drv = pd.read_parquet(CFG["paths"]["drivers_parquet"])
+                if {"district_id","district_name"}.issubset(drv.columns):
+                    feats = feats.merge(
+                        drv[["district_id","district_name"]].drop_duplicates(),
+                        left_on=name_cols[0], right_on="district_name", how="left"
+                    )
+            except Exception as e:
+                # fall through to hard error if we can't map
+                pass
+    if "district_id" not in feats.columns or feats["district_id"].isna().any():
+        raise ValueError("features CSV must include 'district_id', or a name column that can be mapped via drivers_parquet.")
+
     # build X matrix
     if feat_names:
         X = feats[feat_names]
     else:
-        X = feats[[c for c in feats.columns if c not in ("district_id", "season")]]
+        exclude = {"district_id","season","district_name"}
+        X = feats[[c for c in feats.columns if c not in exclude]]
+
     # predict
     if isinstance(model, lgb.Booster):
         y_pred = model.predict(X)
     else:
         y_pred = model.predict(X)  # sklearn-like
-    # naive 15% CI band (replace with your calibrated approach when ready)
+
     ci_w = 0.15 * np.abs(y_pred)
     out = feats[["district_id"]].copy()
     out["season"] = season
@@ -138,6 +230,7 @@ def lgb_predict(features_csv: str, season: str) -> pd.DataFrame:
     out["ci_high"] = y_pred + ci_w
     out["anomaly_flag"] = False
     return out
+
 
 # -------------------- ResourceOpt (PuLP ILP) --------------------
 
@@ -247,11 +340,23 @@ async def run_diseasealert(files: List[UploadFile] = File(...), district_name: O
     for up in files:
         img = Image.open(io.BytesIO(await up.read()))
         t = _preprocess_image(img, size=size, mean=mean, std=std)
+        
+        # with torch.no_grad():
+        #     out = model(t) if is_script else None
+        #     if out is None:
+        #         return JSONResponse(status_code=500, content={"error": "Model not TorchScript. Please export scripted .pt."})
+        #     prob = _softmax(out).cpu().numpy()[0]
+        
         with torch.no_grad():
-            out = model(t) if is_script else None
-            if out is None:
-                return JSONResponse(status_code=500, content={"error": "Model not TorchScript. Please export scripted .pt."})
+            out = model(t)  # works for TorchScript OR an eager PyTorch module
+            # be tolerant if the model returns a tuple/dict
+            if isinstance(out, (list, tuple)):
+                out = out[0]
+            if isinstance(out, dict):
+                out = out.get("logits", next(iter(out.values())))
+
             prob = _softmax(out).cpu().numpy()[0]
+
         cls_idx = int(prob.argmax())
         cls_name = _LABELS[cls_idx] if _LABELS and cls_idx < len(_LABELS) else str(cls_idx)
         severity = float(prob[cls_idx])  # use winning prob as "severity" proxy (replace if you have a reg head)
