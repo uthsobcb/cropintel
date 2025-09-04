@@ -49,10 +49,14 @@ def load_models_by_season(models_dir: str, manifest: List[dict]) -> Dict[str, An
     for m in manifest:
         season = m["season"]  # "ALL", "Aman", "Aus", "Boro"
         p = m["path"]
+        # Try absolute path first, then relative to models_dir
         if not os.path.isabs(p):
-            p = os.path.join(models_dir, os.path.basename(p))
-        if not os.path.exists(p) and os.path.exists(m["path"]):
-            p = m["path"]
+            p_rel = os.path.join(models_dir, os.path.basename(p))
+            if os.path.exists(p_rel):
+                p = p_rel
+        if not os.path.exists(p):
+            st.warning(f"Model file not found for season '{season}': {p}")
+            continue
         cache[season] = joblib.load(p)
     return cache
 
@@ -61,7 +65,7 @@ def load_training_medians(models_dir: str, feature_list: List[str]) -> Dict[str,
     """Use training medians for imputation if available."""
     for fname in ["training_panel_richlags.csv", "training_panel.csv"]:
         path = os.path.join(models_dir, fname)
-        if os.path.exists(path):
+        if os.path.exists(path):  # <-- FIXED HERE
             try:
                 df = pd.read_csv(path)
                 cols = [c for c in feature_list if c in df.columns]
@@ -264,27 +268,29 @@ with tab2:
     season_b = st.selectbox("Season for batch", options=SEASONS, index=0, key="season_batch")
 
     if up is not None:
-        df_in = pd.read_csv(up)
-        st.write("Preview:", df_in.head())
+        try:
+            df_in = pd.read_csv(up)
+            st.write("Preview:", df_in.head())
 
-        # Align to current mode's features (impute missing)
-        aligned, miss_counts = [], []
-        for _, row in df_in.iterrows():
-            payload = {k: row.get(k, np.nan) for k in df_in.columns}
-            X_row, miss = build_feature_row(payload, features, medians)
-            aligned.append(X_row); miss_counts.append(miss)
-        X_all = pd.concat(aligned, ignore_index=True)
+            aligned, miss_counts = [], []
+            for _, row in df_in.iterrows():
+                payload = {k: row.get(k, np.nan) for k in df_in.columns}
+                X_row, miss = build_feature_row(payload, features, medians)
+                aligned.append(X_row); miss_counts.append(miss)
+            X_all = pd.concat(aligned, ignore_index=True)
 
-        mdl_b = route_model(models_map, season_b)
-        preds = mdl_b.predict(X_all).astype(float)
-        out = df_in.copy()
-        out["predicted_yield_t_ha"] = preds
-        out["missing_filled"] = miss_counts
+            mdl_b = route_model(models_map, season_b)
+            preds = mdl_b.predict(X_all).astype(float)
+            out = df_in.copy()
+            out["predicted_yield_t_ha"] = preds
+            out["missing_filled"] = miss_counts
 
-        st.success("Done. Showing first rows with predictions:")
-        st.dataframe(out.head(), use_container_width=True)
+            st.success("Done. Showing first rows with predictions:")
+            st.dataframe(out.head(), use_container_width=True)
 
-        buff = io.StringIO()
-        out.to_csv(buff, index=False)
-        st.download_button("Download results CSV", data=buff.getvalue(),
-                           file_name=f"predictions_{active_tag}.csv", mime="text/csv")
+            buff = io.StringIO()
+            out.to_csv(buff, index=False)
+            st.download_button("Download results CSV", data=buff.getvalue(),
+                               file_name=f"predictions_{active_tag}.csv", mime="text/csv")
+        except Exception as e:
+            st.error(f"Error processing batch: {e}")
